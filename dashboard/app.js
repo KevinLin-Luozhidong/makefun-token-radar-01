@@ -122,7 +122,7 @@
     cell('80% band', usd(row.implied_low80_usd) + ' – ' + usd(row.implied_high80_usd), 'from the fit residual scatter, about ' + (fit.residSd || '?') + ' in log10');
     cell('TVL', usdFull(row.tvl_usd), '7d change ' + pct(row.change_7d));
     cell('Cross-check', usdFull(row.cross_check_usd), 'TVL x median market-cap/TVL of the fitted set');
-    cell('Peer token rate', Math.round(row.peer_token_rate * 100) + '%', 'share of similar protocols that already record a token — not a launch prediction');
+    cell('Registry rate', Math.round(row.peer_token_rate * 100) + '%', 'share of similar protocols that already record a token — a registry fact, not a launch prediction');
     cell('Recompute check', ok ? 'matches' : 'DIFFERS', 'page recomputes ' + usdFull(check) + ' from the stored multipliers');
     wrap.appendChild(kv);
     wrap.appendChild(el('h3', { text: 'How the value is built' }));
@@ -157,7 +157,7 @@
     hr.appendChild(th('7d', 'change', 'num'));
     hr.appendChild(th('Age', 'age', 'num'));
     hr.appendChild(th('Implied value', 'implied', 'num'));
-    hr.appendChild(th('Peer rate', 'peer', 'num'));
+    hr.appendChild(th('Registry rate', 'peer', 'num'));
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody = el('tbody');
@@ -212,14 +212,14 @@
     var box = el('section', { 'class': 'method' });
     box.appendChild(el('h2', { text: 'Method — fitted, backtested, and fully accounted' }));
     box.appendChild(el('p', { text: 'The board ranks protocols that record no token by an implied value fitted from the snapshot itself. The training set is the ' + fit.trainN + ' protocols that record a token with a usable market cap (' + fit.trimmedN + ' wild residuals trimmed away, ' + fit.badMcapN + ' with a zero or negative market cap set aside). The fit is log10(market cap) = ' + fit.intercept + ' + ' + fit.slope + ' x log10(TVL), with residual scatter ' + fit.residSd + ' in log10. A category factor (shrunk median residual, capped) corrects the line per category; growth and age are small tilts only, because in-sample they correlate with the residual at about 0.04 and 0.05.' }));
-    box.appendChild(el('p', { text: 'Backtests, computed by the program on the same fit: leave-one-out median error ' + fit.looMedianFold + 'x, walk-forward median error ' + fit.walkForwardMedianFold + 'x (trained on the earliest-listed half of dated protocols, tested on the later ' + fit.walkForwardTestN + '). In plain words: a typical implied value here is wrong by about a factor of three, which is why every row shows an 80% band instead of a single confident number.' }));
-    box.appendChild(el('p', { text: 'Launch odds are peer rates, not predictions: for each protocol, the mean of its category’s shrunk token share and its TVL tier’s shrunk token share. A protocol’s launch is never predicted, and no row claims a token will be issued.' }));
+    box.appendChild(el('p', { text: 'Backtests, computed by the program on the base line — the fitted line before the category, growth and maturity multipliers, so they describe the line, not the final ranked values: leave-one-out median error ' + fit.looMedianFold + 'x, walk-forward median error ' + fit.walkForwardMedianFold + 'x (trained on the earliest-listed half of dated protocols, tested on the later ' + fit.walkForwardTestN + '). In plain words: a typical implied value here is wrong by about a factor of three, which is why every row shows an 80% band instead of a single confident number.' }));
+    box.appendChild(el('p', { text: 'Registry rate, not launch odds: for each protocol, the mean of its category’s shrunk token share and its TVL tier’s shrunk token share. It counts the protocols around it that already record a token; it never predicts this protocol will issue one, and no row claims a token will be issued.' }));
     box.appendChild(el('h2', { text: 'Accounting — all ' + acc.total + ' protocols, every one placed' }));
     var ul = el('ul');
     [
       acc.tokenRecorded + ' record a token (' + acc.tokenUsable + ' usable for the fit, ' + acc.tokenBadMcap + ' with a zero or negative market cap).',
       acc.noToken + ' record no token. Of those, ' + acc.visibleExcluded + ' fail the visible part of the house rule (wrapped, staked, bridged, exchange or versioned).',
-      acc.visiblePassers + ' pass the visible rule. ' + acc.aboveFloorNotWatchlist + ' of them sit at or above the $50M floor but are not on the house watchlist — the part of the rule the snapshot cannot show (the parent record) is what left them out, so they are not ranked.',
+      acc.visiblePassers + ' pass the visible rule. ' + acc.aboveFloorNotWatchlist + ' of them sit at or above the $50M floor but are not on the house watchlist — the part of the rule the snapshot cannot show (the parent record) is what left them out, so they are not ranked. The board page lists each one below the table with its fitted value, so nothing is hidden.',
       acc.belowFloorPassers + ' pass below the floor; ' + acc.familyExcludedBelowFloor + ' of those share a slug head with a token-bearing protocol and are set aside as deployments of a trading brand.',
       'The board ranks ' + acc.boardRows + ' protocols: all ' + acc.watchlistCovered + ' of the watchlist plus ' + (acc.boardRows - acc.watchlistCovered) + ' early ones below the floor.',
       'Data quality flags: ' + fit.badMcapN + ' token-bearing rows carry a zero or negative market cap; 4 protocols carry no 7-day change; 113 carry no listing date, so their age — and their maturity tilt — uses the 365-day fallback.'
@@ -255,15 +255,15 @@
     }
     stat('Ranked', String(rows.length), acc.watchlistCovered + ' watchlist + ' + (rows.length - acc.watchlistCovered) + ' early');
     stat('#1 implied', top ? usd(top.implied_value_usd) : '—', top ? top.name : '');
-    stat('LOO error', fit.looMedianFold + 'x', 'median fold, leave-one-out');
-    stat('Walk-forward', fit.walkForwardMedianFold + 'x', 'median fold, later half');
+    stat('LOO error', fit.looMedianFold + 'x', 'median fold, leave-one-out, base line only');
+    stat('Walk-forward', fit.walkForwardMedianFold + 'x', 'median fold, later half, base line only');
     app.appendChild(stats);
 
     var strip = el('div', { 'class': 'strip' });
     strip.appendChild(el('b', { text: 'Integrity: ' }));
     strip.appendChild(document.createTextNode(
       acc.total + ' protocols in the snapshot. ' + acc.tokenIndicated + ' record a token by market cap, CoinGecko id or symbol, ' + acc.noToken + ' record none. ' +
-      acc.visibleExcluded + ' fail the visible house rule; ' + acc.aboveFloorNotWatchlist + ' pass it above the floor but are not on the watchlist and are not ranked; ' +
+      acc.visibleExcluded + ' fail the visible house rule; ' + acc.aboveFloorNotWatchlist + ' pass it above the floor but are not on the watchlist and are not ranked — they are listed below the board; ' +
       acc.familyExcludedBelowFloor + ' below-floor deployments of trading brands are set aside. ' +
       fit.badMcapN + ' token rows carry a zero or negative market cap and never enter the fit.'));
     app.appendChild(strip);
@@ -312,6 +312,40 @@
       controls.appendChild(el('span', { 'class': 'count', text: list.length + ' of ' + rows.length + ' shown — click a row for its detail and farm plan' }));
       app.appendChild(controls);
       app.appendChild(boardTable(list));
+      // The omission, shown instead of hidden: protocols that pass the
+      // visible rule above the floor but are not on the house watchlist.
+      // They are not board rows and never affect the ranks above.
+      var excluded = DATA.excludedAboveFloor || [];
+      if (excluded.length > 0) {
+        var ex = el('section', { 'class': 'method' });
+        ex.appendChild(el('h2', { text: 'Not ranked — above the floor, off the watchlist (' + excluded.length + ')' }));
+        ex.appendChild(el('p', { text: 'These protocols pass the visible part of the house rule at or above the $50M floor, but the house watchlist left them out. The part of the rule the snapshot cannot show — DefiLlama’s parent record — is what left them out, so they are not ranked. Their implied values below come from the same fitted model, shown so the reader can judge the omission instead of never seeing it.' }));
+        var xt = el('table', { 'class': 'board plain' });
+        var xhead = el('thead');
+        var xhr = el('tr');
+        ['Protocol', 'Category', 'TVL', '7d', 'Implied value', 'Why not ranked'].forEach(function (h, i) {
+          xhr.appendChild(el('th', { 'class': i >= 2 ? 'num' : '', text: h }));
+        });
+        xhead.appendChild(xhr);
+        xt.appendChild(xhead);
+        var xbody = el('tbody');
+        excluded.forEach(function (r) {
+          var tr = el('tr');
+          tr.appendChild(el('td', {}, el('div', { 'class': 'name', text: r.name }), el('div', { 'class': 'sub2', text: (r.chains || []).slice(0, 3).join(', ') })));
+          tr.appendChild(el('td', { text: r.category || '—' }));
+          tr.appendChild(el('td', { 'class': 'num', text: usd(r.tvl_usd) }));
+          tr.appendChild(el('td', { 'class': 'num ' + (r.change_7d === null ? '' : (r.change_7d >= 0 ? 'pos' : 'neg')), text: pct(r.change_7d) }));
+          var ximp = el('td', { 'class': 'num' });
+          ximp.appendChild(el('div', { text: usd(r.implied_value_usd) }));
+          ximp.appendChild(el('div', { 'class': 'band', text: usd(r.implied_low80_usd) + '–' + usd(r.implied_high80_usd) }));
+          tr.appendChild(ximp);
+          tr.appendChild(el('td', { text: r.reason }));
+          xbody.appendChild(tr);
+        });
+        xt.appendChild(xbody);
+        ex.appendChild(xt);
+        app.appendChild(ex);
+      }
     }
     app.appendChild(el('footer', { text: 'Token Radar · snapshot ' + DATA.as_of + ' · ' + DATA.source + ' · Implied values are estimates from the snapshot, not predictions. No token is guaranteed; farm only what you can afford to leave in place.' }));
     app.setAttribute('aria-busy', 'false');

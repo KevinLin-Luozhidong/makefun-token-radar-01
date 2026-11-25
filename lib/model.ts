@@ -22,10 +22,12 @@
 // Uncertainty is the honest part. The residual scatter of the fit is wide
 // (about 0.57 in log10), so every row carries an 80% band roughly 5x wide
 // either side of the point estimate, and the dashboard shows the band next
-// to the number. The backtests are computed here too, on the same fit:
-// leave-one-out and walk-forward (train on the earliest-listed half, test
-// on the later half), each reported as a median fold error, so a reader can
-// see how wrong this kind of estimate usually is before trusting any row.
+// to the number. The backtests are computed here too, on the base line
+// (the fitted line before the category, growth and maturity multipliers),
+// so they describe the line, not the final ranked values: leave-one-out
+// and walk-forward (train on the earliest-listed half, test on the later
+// half), each reported as a median fold error, so a reader can see how
+// wrong this kind of estimate usually is before trusting any row.
 
 /** The snapshot's protocol entry: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
@@ -323,7 +325,9 @@ export interface Valuation {
   ageDays: number | null;
   /** Naive cross-check: TVL x the training set's median market-cap/TVL ratio. */
   crossCheck: number;
-  /** Peer token rate: mean of the shrunk category rate and the shrunk TVL-tier rate. */
+  /** Registry rate: mean of the shrunk category rate and the shrunk TVL-tier rate.
+   *  The share of similar protocols that already record a token — a fact
+   *  about the registry, never a prediction that this protocol will issue one. */
   peerRate: number;
 }
 
@@ -440,6 +444,27 @@ export interface LiveRow {
   mcap_tvl_ratio: number;
 }
 
+/**
+ * A protocol above the watchlist floor that passes the visible house rule
+ * but is not on the house watchlist — shown, with its fitted value, in a
+ * flagged section of its own, never as a board row. The dashboard shows
+ * these instead of hiding them, so the reader can judge the omission.
+ */
+export interface ExcludedAboveFloor {
+  slug: string;
+  name: string;
+  category: string | null;
+  chains: string[];
+  tvl_usd: number;
+  change_7d: number | null;
+  age_days: number | null;
+  implied_value_usd: number;
+  implied_low80_usd: number;
+  implied_high80_usd: number;
+  cross_check_usd: number;
+  reason: string;
+}
+
 /** Everything the dashboard needs, computed from the snapshot. */
 export interface RadarData {
   as_of: string;
@@ -452,6 +477,8 @@ export interface RadarData {
   live_size: number;
   rows: BoardRow[];
   live: LiveRow[];
+  /** Above-floor visible passers the house watchlist left out: shown, not ranked. */
+  excludedAboveFloor: ExcludedAboveFloor[];
 }
 
 /** How much capital one farm position needs, from the protocol's own TVL. */
@@ -503,15 +530,51 @@ function weeklyFor(p: SnapshotProtocol): string {
   return 'a deposit, a swap, a vote, or another transaction the protocol records';
 }
 
+/** Entry timing from this protocol's own 7-day TVL change. */
+function growthClause(p: SnapshotProtocol): string {
+  const g = p.change_7d;
+  if (g === null || !Number.isFinite(g)) return 'No 7-day change is reported, so enter in two halves a week apart rather than all at once.';
+  if (g >= 15) return `TVL is up ${g.toFixed(1)}% in 7 days, so split the entry into three parts over three days instead of one lump sum.`;
+  if (g <= -15) return `TVL is down ${Math.abs(g).toFixed(1)}% in 7 days, so start with half the capital and add the rest only if TVL steadies.`;
+  return `TVL is roughly flat (${g > 0 ? '+' : ''}${g.toFixed(1)}% in 7 days), so a single entry is fine.`;
+}
+
+/** Hold risk from this protocol's own age since listing. */
+function ageClause(age: number | null): string {
+  if (age === null) return ' No listing date is reported, so treat the protocol as unproven and do not shorten the hold.';
+  if (age < 180) return ` It has only been tracked ${age} days, so treat the position as higher-risk and size it as money you can leave alone.`;
+  if (age >= 1095) return ` It has run ${(age / 365).toFixed(1)} years with no token, so a longer hold is cheap patience.`;
+  return '';
+}
+
+/** Whole dollars with commas, for farm-step text. */
+function whole(n: number): string {
+  return `$${Math.round(n).toLocaleString('en-US')}`;
+}
+
+/** How the fitted value compares with the naive cross-check, in this row's own numbers. */
+function crossClause(implied: number, crossCheck: number): string {
+  const ratio = Math.max(implied / crossCheck, crossCheck / implied);
+  if (ratio <= 3) {
+    return `The naive cross-check (TVL x median ratio) puts this protocol at ${whole(crossCheck)} against the fitted ${whole(implied)}, so the two agree within ${ratio.toFixed(1)}x and the size is not resting on one formula.`;
+  }
+  const which = implied > crossCheck ? 'the fitted value sits well above the naive cross-check' : 'the naive cross-check sits well above the fitted value';
+  return `The naive cross-check (TVL x median ratio) puts this protocol at ${whole(crossCheck)} against the fitted ${whole(implied)} — ${which}, a ${ratio.toFixed(1)}x gap, so halve the position before claiming anything.`;
+}
+
 /**
  * A protocol's farm plan: six steps, each an action with a cost and a time.
  * Every step is derived from the protocol's own record (category, chains,
  * TVL, age) — no name is special-cased — and every step says what it costs
- * and how long it takes. Nothing here promises a token: the plan farms a
- * position that would qualify if the protocol ever rewards one, and the
- * first and last steps say so in plain words.
+ * and how long it takes. The steps also cite the row's own numbers, so two
+ * protocols in the same category do not get the same plan: the entry step
+ * follows this protocol's 7-day TVL change, the hold follows its age, the
+ * claim step compares its fitted value with its naive cross-check, and the
+ * exit follows its 80% band low. Nothing here promises a token: the plan
+ * farms a position that would qualify if the protocol ever rewards one, and
+ * the first and last steps say so in plain words.
  */
-export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
+export function farmSteps(p: SnapshotProtocol, age: number | null, v: Valuation): FarmStep[] {
   const chain = chainOf(p);
   const capital = capitalFor(p);
   const hold = holdDaysFor(age);
@@ -523,7 +586,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '5 minutes',
     },
     {
-      text: actionFor(p, capital, chain),
+      text: `${actionFor(p, capital, chain)} ${growthClause(p)}`,
       cost: `$${capital} of capital and about $${gas} of gas`,
       time: '15 minutes to set up',
     },
@@ -533,17 +596,17 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '10 minutes a week',
     },
     {
-      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot, and do not withdraw early.`,
+      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot, and do not withdraw early.${ageClause(age)}`,
       cost: `the $${capital} stays in the position`,
       time: `${hold} days`,
     },
     {
-      text: `Before you withdraw, open the protocol's own points or rewards page from its official site and claim only from the link it publishes.`,
+      text: `Before you withdraw, open the protocol's own points or rewards page from its official site and claim only from the link it publishes. ${crossClause(v.implied, v.crossCheck)}`,
       cost: 'no fee to check, and never pay anyone to claim for you',
       time: '10 minutes',
     },
     {
-      text: 'Write the wallet, the dates and every transaction hash in a farm log, then unwind in the reverse order you entered. No token is guaranteed.',
+      text: `Write the wallet, the dates and every transaction hash in a farm log, then unwind in the reverse order you entered. If TVL falls far enough that the fitted value drops below the 80% band low of ${whole(v.low80)}, unwind early instead of waiting. No token is guaranteed.`,
       cost: 'nothing but the log, plus gas to exit',
       time: '5 minutes to log, 15 minutes to exit',
     },
@@ -586,6 +649,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
   let belowFloorPassers = 0;
   let familyExcludedBelowFloor = 0;
   const chosen = new Map<string, SnapshotProtocol>();
+  const excludedAboveFloor: ExcludedAboveFloor[] = [];
 
   for (const slug of snapshot.watchlist) {
     const p = bySlug.get(slug);
@@ -601,7 +665,24 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     }
     visiblePassers++;
     if (p.tvl_usd >= snapshot.floor_usd) {
-      if (!watchlist.has(p.slug)) aboveFloorNotWatchlist++;
+      if (!watchlist.has(p.slug)) {
+        aboveFloorNotWatchlist++;
+        const v = valueProtocol(p, snapshot.as_of, fit);
+        excludedAboveFloor.push({
+          slug: p.slug,
+          name: p.name,
+          category: p.category,
+          chains: p.chains,
+          tvl_usd: p.tvl_usd,
+          change_7d: p.change_7d,
+          age_days: v.ageDays,
+          implied_value_usd: v.implied,
+          implied_low80_usd: v.low80,
+          implied_high80_usd: v.high80,
+          cross_check_usd: v.crossCheck,
+          reason: 'Off the house watchlist — parent record not in snapshot',
+        });
+      }
       continue;
     }
     belowFloorPassers++;
@@ -645,9 +726,13 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
         growth_multiplier: s.v.growthMultiplier,
         maturity_multiplier: s.v.maturityMultiplier,
       },
-      farm_steps: farmSteps(s.p, s.v.ageDays).map(stepText),
+      farm_steps: farmSteps(s.p, s.v.ageDays, s.v).map(stepText),
     };
   });
+
+  // The flagged omission list, ranked by the same fitted value so the reader
+  // sees the biggest omission first — but never board rows.
+  excludedAboveFloor.sort((a, b) => b.implied_value_usd - a.implied_value_usd || (a.slug < b.slug ? -1 : 1));
 
   const live: LiveRow[] = snapshot.protocols
     .filter((p) => p.mcap_usd !== null && (p.mcap_usd as number) > 0 && p.tvl_usd > 0)
@@ -699,6 +784,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     live_size: live.length,
     rows: board,
     live,
+    excludedAboveFloor,
   };
   return { board, radar, accounting };
 }

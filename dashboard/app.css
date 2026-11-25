@@ -59,6 +59,8 @@ table.board th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.0
 table.board th:hover { color: var(--accent); }
 table.board td.num, table.board th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.board tbody tr { cursor: pointer; }
+table.board.plain tbody tr { cursor: default; }
+table.board.plain tbody tr:hover { background: transparent; }
 table.board tbody tr:hover { background: var(--card2); }
 table.board tbody tr.sel { background: var(--card2); outline: 2px solid var(--accent); outline-offset: -2px; }
 .rank { font-weight: 700; color: var(--accent); }
