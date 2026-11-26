@@ -77,6 +77,13 @@ table.board tbody tr.sel { background: var(--card2); outline: 2px solid var(--ac
 .detail h2 { margin: 0 0 2px; font-size: 22px; }
 .detail .meta { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
 .detail h3 { margin: 16px 0 6px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.multbars { margin: 2px 0 8px; max-width: 560px; }
+.multrow { display: grid; grid-template-columns: 74px 1fr 52px; gap: 10px; align-items: center; margin: 7px 0; }
+.multlabel { font-size: 13px; color: var(--muted); }
+.multtrack { position: relative; height: 12px; background: var(--card2); border-radius: 999px; overflow: hidden; }
+.multfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 999px; }
+.multneutral { position: absolute; left: 33.33%; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.75; }
+.multval { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .kv .cell { background: var(--card2); border-radius: 8px; padding: 10px 12px; }
 .kv .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }

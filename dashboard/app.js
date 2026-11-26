@@ -126,10 +126,31 @@
     cell('Recompute check', ok ? 'matches' : 'DIFFERS', 'page recomputes ' + usdFull(check) + ' from the stored multipliers');
     wrap.appendChild(kv);
     wrap.appendChild(el('h3', { text: 'How the value is built' }));
+    // The three multipliers as a small bar chart, on one scale (0.50–2.00),
+    // with a marker at 1.00 (no effect). Same numbers the prose used to
+    // carry, now visible at a glance; the fit equation itself lives in the
+    // method tab and the board's model box, so nothing is lost here.
+    var mults = [
+      { label: 'Category', v: catFactorOf(row) },
+      { label: 'Growth', v: row.model.growth_multiplier },
+      { label: 'Maturity', v: row.model.maturity_multiplier }
+    ];
+    var chart = el('div', { 'class': 'multbars', 'role': 'img', 'aria-label': 'Multipliers: category ' + mults[0].v.toFixed(2) + ', growth ' + mults[1].v.toFixed(2) + ', maturity ' + mults[2].v.toFixed(2) + ' (1.00 means no effect)' });
+    mults.forEach(function (m) {
+      var w = Math.max(0, Math.min(100, (m.v - 0.5) / 1.5 * 100));
+      var r = el('div', { 'class': 'multrow' });
+      r.appendChild(el('span', { 'class': 'multlabel', text: m.label }));
+      var track = el('div', { 'class': 'multtrack' });
+      track.appendChild(el('span', { 'class': 'multfill', 'style': 'width:' + w.toFixed(1) + '%' }));
+      track.appendChild(el('span', { 'class': 'multneutral' }));
+      r.appendChild(track);
+      r.appendChild(el('span', { 'class': 'multval', text: '× ' + m.v.toFixed(2) }));
+      chart.appendChild(r);
+    });
+    wrap.appendChild(chart);
     wrap.appendChild(el('p', { 'class': 'meta', text:
-      'Fitted base ' + usdFull(row.model.base_usd) + ' (log10 market cap = ' + fit.intercept + ' + ' + fit.slope +
-      ' x log10 TVL)  x  category factor ' + catFactorOf(row).toFixed(2) + '  x  growth ' + row.model.growth_multiplier.toFixed(2) +
-      '  x  maturity ' + row.model.maturity_multiplier.toFixed(2) + '  =  ' + usdFull(row.implied_value_usd) + '.' }));
+      'Bars show each multiplier against 1.00 (no effect). Fitted base ' + usdFull(row.model.base_usd) +
+      '  ×  category  ×  growth  ×  maturity  =  ' + usdFull(row.implied_value_usd) + '.' }));
     wrap.appendChild(el('h3', { text: 'Farm plan — what to do, what it costs, how long it takes' }));
     var ol = el('ol', { 'class': 'farm' });
     (row.farm_steps || []).forEach(function (s) { ol.appendChild(el('li', { text: s })); });
