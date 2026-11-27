@@ -50,7 +50,7 @@
       Object.keys(attrs).forEach(function (k) {
         if (k === 'class') node.className = attrs[k];
         else if (k === 'text') node.textContent = attrs[k];
-        else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), attrs[k]);
+        else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
         else if (attrs[k] !== null && attrs[k] !== undefined) node.setAttribute(k, attrs[k]);
       });
     }
